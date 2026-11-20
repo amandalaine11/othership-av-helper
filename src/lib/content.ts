@@ -9,6 +9,7 @@ export type Sym =
   | "av-class"
   | "mic-none"
   | "mic-crackle"
+  | "mic-headset"
   | "wired"
   | "bluetooth"
   | "light-app"
@@ -20,7 +21,16 @@ export type Sym =
   | "ups"
   | "backup";
 
-export type Step = { t: string; bullets: string[]; mod?: boolean };
+export type Step = {
+  t: string;
+  bullets: string[];
+  mod?: boolean;
+  note?: string;
+  /** On this step, "That fixed it" moves to the next step instead of ending. */
+  continueIfFixed?: boolean;
+  /** On this step, "Still broken" opens the headset-pack step, then escalation. */
+  brokenGoesTo?: "headset-pack";
+};
 export type Entry = {
   steps?: Step[];
   note?: string;
@@ -97,6 +107,11 @@ export const SYMPTOMS: { id: Sym; label: string; keys: string[] }[] = [
     id: "mic-crackle",
     label: "Mic crackling or cutting in and out",
     keys: ["crackle", "crackling", "static", "cutting in", "in and out", "feedback", "buzz", "mic", "fuzzy"],
+  },
+  {
+    id: "mic-headset",
+    label: "Mic crackling or cutting out (headset)",
+    keys: ["crackle", "crackling", "static", "cutting out", "buzzing", "mic", "headset", "poof"],
   },
   {
     id: "wired",
@@ -536,6 +551,134 @@ export const GOOD_TO_KNOW: Record<Loc, Tip[]> = {
   ],
 };
 
+export const HEADSET_POINTER =
+  "Crackling, cutting out, or a bad headset? Use “Mic crackling or cutting out (headset)”.";
+
+export const HEADSET_PACK_STEP: Step = {
+  t: "New headset didn't fix it?",
+  bullets: [
+    "The mic pack may need swapping.",
+    "That's a mentor or MOD job, so get a mentor or the MOD.",
+    "Don't swap the pack yourself.",
+  ],
+};
+
+export function headsetEntry(loc: Loc): Entry {
+  const mod: Step[] = [
+    {
+      t: "Swap the mic pack",
+      bullets: [
+        "The AV bin has backup packs boxed and labelled Mic 1 and Mic 2, already synced.",
+        "Check which mic is broken on the pack's little screen (EW-DX 1 or 2).",
+        "Put two fresh AA batteries in the matching backup, then turn it on.",
+        "Walk the space unmuted to test.",
+      ],
+      mod: true,
+    },
+    {
+      t: "Blank or unlabelled pack: sync it at the Sennheiser EW-DX receiver",
+      bullets: [
+        "If the buttons don't respond, press Up and Down together to clear the key lock.",
+        "Press channel 1 or 2, then SYNC on the receiver until the blue LED flashes.",
+        "Then press SYNC on top of the pack.",
+        "The receiver confirms it's synced.",
+      ],
+      mod: true,
+    },
+    {
+      t: "Label the pack and send it for repair",
+      bullets: [
+        "Mics are expensive. Label the pack and put it in the AV bin. Never throw it out.",
+        "Follow the Broken Mic SOP (Repairs) in Notion for the repair form.",
+        "When a replacement arrives, sync it as the backup and post the new count in #guide-av-inventory.",
+      ],
+      mod: true,
+    },
+    {
+      t: "Both mics crackle in one room",
+      bullets: [
+        "That's likely the speakers or the room system, not the mic.",
+        "Escalate in #tech-sos.",
+      ],
+      mod: true,
+    },
+  ];
+  if (loc === "yorkville") {
+    mod.splice(2, 0, {
+      t: "Yorkville: don't touch the rack",
+      bullets: [
+        "Do not touch the rack right now. It is unsafe.",
+        "Escalate in #tech-sos instead.",
+      ],
+      mod: true,
+    });
+  }
+  return {
+    steps: [
+      {
+        t: "Check the easy stuff",
+        bullets: [
+          "Make sure the mic pack isn't muted (mute switch on top of the pack).",
+          "Check the poof (foam windscreen). If it's wet, swap in a dry one.",
+        ],
+      },
+      {
+        t: "Is it the mic or the room?",
+        bullets: [
+          "Walk a few zones with the mic on: sauna, cold space, Commons.",
+          "Crackles everywhere: it's the headset, so keep going.",
+          "Only in one room: put on the other mic and test that room. If both mics crackle there, it's the speakers, not the mic. Tap Still broken to get help, and mention it in the message.",
+        ],
+      },
+      {
+        t: "Ask for help with the headset swap",
+        bullets: [
+          "If a mentor, a guide who has swapped a headset before, or the MOD is on the floor, ask them to do the swap.",
+          "No one around and it can't wait? The next steps show you how.",
+        ],
+      },
+      {
+        t: "Test a new headset before you unthread anything",
+        note: "Fixed? Keep going to finish the swap properly.",
+        continueIfFixed: true,
+        brokenGoesTo: "headset-pack",
+        bullets: [
+          "Grab a spare headset from the AV bin and keep it wound up.",
+          "Unscrew the old headset where it meets the mic pack, then screw in the new one.",
+          "Walk into the sauna and say “test, test, test.” Sounds clean? The old headset is the problem, so go to the next step.",
+          "Still crackling? Screw the old headset back on (don't waste a spare) and tap Still broken.",
+        ],
+      },
+      {
+        t: "Thread the new headset into the belt",
+        bullets: [
+          "Lift the plastic lock at the top of the belt pouch, flip the tabs to the side, then gently pull the pouch open (it won't just pull apart).",
+          "Thread the headset connector from inside the pouch out through the top. Leave a little slack.",
+          "Press the wire into the tiny clasp inside the opening so it can't get pinched. Pinched cords are what wear headsets out.",
+          "Line up the knobs with the holes, flip the tabs up, then press down to close. Screw the headset onto the pack and slide the pack in antenna first.",
+        ],
+      },
+      {
+        t: "Label the broken headset (never throw it out)",
+        bullets: [
+          "Mics are expensive and get sent off for repair.",
+          "Put a sticky note on it, held on with an elastic band, saying what's wrong (e.g. “crackling in sauna”).",
+          "Put it in the AV bin.",
+        ],
+      },
+      {
+        t: "Tell the team",
+        bullets: [
+          "Post in #tech-sos, e.g. “Replaced the headset on Mic 1, it was crackling. Labelled it and put it in the AV bin.”",
+          "Let the SC know and give them the new inventory count.",
+        ],
+      },
+      ...mod,
+    ],
+    fallback: "Get a mentor or the MOD. Don't swap the mic pack yourself. Post in #tech-sos.",
+  };
+}
+
 function nyc(site: "kent" | "flatiron"): Partial<Record<Sym, Entry>> {
   const pc = site === "kent" ? "OTHERSHIP-WMB" : "OTHERSHIP-NYC";
   const rackBullets =
@@ -831,7 +974,9 @@ function nyc(site: "kent" | "flatiron"): Partial<Record<Sym, Entry>> {
       ],
       fallback: NYC_DEFAULT_FALLBACK,
     },
+    "mic-headset": headsetEntry(site),
     "mic-none": {
+      note: HEADSET_POINTER,
       steps: [
         {
           t: "Turn the mic pack on",
@@ -865,12 +1010,11 @@ function nyc(site: "kent" | "flatiron"): Partial<Record<Sym, Entry>> {
           ],
         },
         {
-          t: "Swap the headset",
+          t: "Use the headset steps for the swap",
           bullets: [
-            "Take a spare headset from the AV bin.",
-            "Plug it into the same pack.",
-            "Test in the sauna for 1–2 minutes.",
-            "Fixed? Label the old one “broken (cutting in and out)” and put it in the AV bin.",
+            "Open “Mic crackling or cutting out (headset)”.",
+            "Those steps test a spare before you unthread anything, then label the old headset.",
+            "Don't swap the mic pack yourself. That's a mentor or MOD job.",
           ],
         },
         {
@@ -893,7 +1037,9 @@ function nyc(site: "kent" | "flatiron"): Partial<Record<Sym, Entry>> {
           mod: true,
         },
       ],
-      note: site === "kent" ? "Known issue at Kent: mics crackle more often here. Still post it so it's tracked." : undefined,
+      note:
+        (site === "kent" ? "Known issue at Kent: mics crackle more often here. Still post it so it's tracked. " : "") +
+        HEADSET_POINTER,
       fallback: NYC_DEFAULT_FALLBACK,
     },
     wired: {
@@ -1333,9 +1479,12 @@ const YORKVILLE: Partial<Record<Sym, Entry>> = {
     ],
     fallback: TO_SOUND_FALLBACK,
   },
-  "mic-none": { steps: MIC_BASICS, fallback: "Run class without the mic and post in #tech-sos." },
+  "mic-headset": headsetEntry("yorkville"),
+  "mic-none": { note: HEADSET_POINTER, steps: MIC_BASICS, fallback: "Run class without the mic and post in #tech-sos." },
   "mic-crackle": {
-    note: "Known issue at Yorkville: mic feedback has kept coming back even with new headsets. Don't keep swapping; report it.",
+    note:
+      "Known issue at Yorkville: mic feedback has kept coming back even with new headsets. Don't keep swapping; report it. " +
+      HEADSET_POINTER,
     fallback: "Run class without the mic and post in #tech-sos.",
   },
   "light-app": {
@@ -1701,7 +1850,9 @@ const ADELAIDE: Partial<Record<Sym, Entry>> = {
     ],
     fallback: TO_SOUND_FALLBACK,
   },
+  "mic-headset": headsetEntry("adelaide"),
   "mic-none": {
+    note: HEADSET_POINTER,
     steps: [
       {
         t: "Turn the mute switch off",
@@ -1907,13 +2058,34 @@ export function splitSteps(entry?: Entry): { guide: Step[]; mod: Step[] } {
   };
 }
 
-/** Discord role mention. Change this one constant when the real role is known. */
-export const DISCORD_ROLE_MENTION = "@MOD";
+/** Who gets pinged in #tech-sos, by ship. Mentions are raw Discord user IDs. */
+export const DISCORD_TAGS: Record<Loc, { name: string; id: string }[]> = {
+  yorkville: [{ name: "Cynthia", id: "1048366277477011486" }],
+  adelaide: [{ name: "Julia", id: "851253248073793537" }],
+  kent: [
+    { name: "LaShae", id: "1387440214254944307" },
+    { name: "Eltion", id: "763495866396180540" },
+  ],
+  flatiron: [
+    { name: "Muriel", id: "1346220153758552239" },
+    { name: "Eltion", id: "763495866396180540" },
+  ],
+};
 
-export function sosTemplate(ship: string, problem: string, tried: string[] = []): string {
+export function discordMentions(loc: Loc): string {
+  return DISCORD_TAGS[loc].map((person) => `<@${person.id}>`).join(" ");
+}
+
+export function discordTagNames(loc: Loc): string {
+  const names = DISCORD_TAGS[loc].map((person) => person.name);
+  if (names.length < 2) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+export function sosTemplate(ship: string, problem: string, tried: string[] = [], mentions = ""): string {
   const steps = tried.length ? tried.map((title) => `- ${title}`) : ["- none"];
   return [
-    DISCORD_ROLE_MENTION,
+    mentions,
     `Ship: ${ship}`,
     `Problem: ${problem}`,
     "Steps tried (still broken):",

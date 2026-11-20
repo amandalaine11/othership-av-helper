@@ -5,8 +5,12 @@ import {
   CTRL_ALT_NOTE,
   CTRL_LOGIN,
   DATA,
-  DISCORD_ROLE_MENTION,
+  DISCORD_TAGS,
   GOOD_TO_KNOW,
+  HEADSET_PACK_STEP,
+  HEADSET_POINTER,
+  discordMentions,
+  discordTagNames,
   QUICK_CONNECT,
   SOURCES,
   SYMPTOMS,
@@ -29,6 +33,7 @@ const TITLES = [
   "AV mastered class has no sound",
   "Mic has no sound",
   "Mic crackling or cutting in and out",
+  "Mic crackling or cutting out (headset)",
   "iPad plugged in (cable/dongle), no sound",
   "Bluetooth won't connect",
   "Lighting app won't connect / iPad frozen",
@@ -92,15 +97,51 @@ describe("approved content", () => {
     expect(SOURCES.length).toBeGreaterThan(3);
   });
 
-  it("builds the #tech-sos message from the role mention, ship, and steps still broken", () => {
-    expect(DISCORD_ROLE_MENTION).toBe("@MOD");
-    const msg = sosTemplate("Kent / Williamsburg (NYC)", "Mic has no sound", ["Turn the mute switch off"]);
-    expect(msg.startsWith(`${DISCORD_ROLE_MENTION}\n`)).toBe(true);
+  it("opens the #tech-sos message with that ship's Discord tags", () => {
+    expect(discordMentions("kent")).toBe("<@1387440214254944307> <@763495866396180540>");
+    expect(discordMentions("flatiron")).toBe("<@1346220153758552239> <@763495866396180540>");
+    expect(discordMentions("yorkville")).toBe("<@1048366277477011486>");
+    expect(discordMentions("adelaide")).toBe("<@851253248073793537>");
+    expect(discordTagNames("kent")).toBe("LaShae and Eltion");
+    expect(discordTagNames("yorkville")).toBe("Cynthia");
+    expect(DISCORD_TAGS.flatiron.map((person) => person.name)).toEqual(["Muriel", "Eltion"]);
+    const msg = sosTemplate(
+      "Kent / Williamsburg (NYC)",
+      "Mic has no sound",
+      ["Turn the mute switch off"],
+      discordMentions("kent"),
+    );
+    expect(msg.startsWith(`${discordMentions("kent")}\n`)).toBe(true);
     expect(msg).toContain("Ship: Kent / Williamsburg (NYC)");
     expect(msg).toContain("Problem: Mic has no sound");
     expect(msg).toContain("Steps tried (still broken):");
     expect(msg).toContain("- Turn the mute switch off");
     expect(msg).toContain("MOD on site: no");
+  });
+
+  it("adds the headset crackle steps on every ship and points the older mic problems at them", () => {
+    for (const loc of ["kent", "flatiron", "yorkville", "adelaide"] as const) {
+      const parts = splitSteps(DATA[loc]["mic-headset"]);
+      expect(parts.guide.map((step) => step.t)).toEqual([
+        "Check the easy stuff",
+        "Is it the mic or the room?",
+        "Ask for help with the headset swap",
+        "Test a new headset before you unthread anything",
+        "Thread the new headset into the belt",
+        "Label the broken headset (never throw it out)",
+        "Tell the team",
+      ]);
+      expect(parts.guide[3].note).toBe("Fixed? Keep going to finish the swap properly.");
+      expect(parts.guide[3].continueIfFixed).toBe(true);
+      expect(parts.guide[3].brokenGoesTo).toBe("headset-pack");
+      expect(parts.mod.some((step) => step.t === "Swap the mic pack")).toBe(true);
+      expect(parts.mod.some((step) => step.t.startsWith("Yorkville"))).toBe(loc === "yorkville");
+      expect(DATA[loc]["mic-none"]?.note).toContain(HEADSET_POINTER);
+    }
+    expect(DATA.kent["mic-crackle"]?.note).toContain("Mic crackling or cutting out (headset)");
+    expect(DATA.yorkville["mic-crackle"]?.note).toContain("Mic crackling or cutting out (headset)");
+    expect(HEADSET_PACK_STEP.t).toBe("New headset didn't fix it?");
+    expect(HEADSET_PACK_STEP.bullets.join(" ")).toContain("Don't swap the pack yourself.");
   });
 
   it("gives every step and tip a short title plus 2 to 4 bullets", () => {
@@ -139,6 +180,8 @@ describe("search", () => {
     expect(matchSymptoms("music too quiet")[0].id).toBe("quiet");
     expect(matchSymptoms("lights flickering")[0].id).toBe("flicker");
     expect(matchSymptoms("mic crackling")[0].id).toBe("mic-crackle");
+    expect(matchSymptoms("poof")[0].id).toBe("mic-headset");
+    expect(matchSymptoms("headset")[0].id).toBe("mic-headset");
     expect(matchSymptoms("ipad logged out")[0].id).toBe("ctrl-logout");
     expect(matchSymptoms("flickring")[0].id).toBe("flicker");
     expect(matchSymptoms("zzzzqqq")).toEqual([]);

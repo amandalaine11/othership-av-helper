@@ -309,6 +309,8 @@ th { color: var(--pool); font-size: 0.85rem; letter-spacing: 0.04em; text-transf
 .choice-title { font-size: 1.35rem; line-height: 1.25; margin: 0 0 0.75rem; }
 .choice-fast .choice-title { margin-bottom: 0; }
 .choice-next { font-weight: 700; }
+.tag-line { margin: 0.15rem 0 0.65rem; font-size: 0.95rem; color: var(--pool); }
+.step-note { margin: 0.85rem 0 0; font-weight: 700; }
 .choice .btn { margin-bottom: 0.75rem; }
 .mod-fold { margin-top: 1rem; }
 

@@ -5,6 +5,9 @@ import {
   CTRL_ALT_NOTE,
   CTRL_LOGIN,
   DATA,
+  HEADSET_PACK_STEP,
+  discordMentions,
+  discordTagNames,
   GOOD_TO_KNOW,
   LOCS,
   NO_GUIDE,
@@ -25,7 +28,7 @@ import { matchSymptoms } from "./lib/search";
 
 const SHIP_KEY = "othership-av-ship";
 
-type Mode = "walk" | "stop" | "fixed";
+type Mode = "walk" | "pack" | "stop" | "fixed";
 
 function readShip(): Loc | null {
   try {
@@ -90,7 +93,8 @@ export default function App() {
   const parts = splitSteps(entry);
   const symInfo = SYMPTOMS.find((s) => s.id === sym);
   const matches = matchSymptoms(query);
-  const message = info && symInfo ? sosTemplate(info.long, symInfo.label, tried) : "";
+  const mentions = loc ? discordMentions(loc) : "";
+  const message = info && symInfo ? sosTemplate(info.long, symInfo.label, tried, mentions) : "";
   const isNyc = loc === "kent" || loc === "flatiron";
 
   useEffect(() => {
@@ -129,13 +133,28 @@ export default function App() {
     requestAnimationFrame(() => searchRef.current?.focus());
   }
 
+  function markTried(title: string) {
+    setTried((prev) => (prev.includes(title) ? prev : [...prev, title]));
+  }
+
   function stillBroken() {
     const current = parts.guide[step];
-    if (current) {
-      setTried((prev) => (prev.includes(current.t) ? prev : [...prev, current.t]));
+    if (current) markTried(current.t);
+    if (current?.brokenGoesTo === "headset-pack") {
+      setMode("pack");
+      return;
     }
     if (step + 1 >= parts.guide.length) setMode("stop");
     else setStep(step + 1);
+  }
+
+  function fixedIt() {
+    const current = parts.guide[step];
+    if (current?.continueIfFixed && step + 1 < parts.guide.length) {
+      setStep(step + 1);
+      return;
+    }
+    setMode("fixed");
   }
 
   async function onCopy(id: string, text: string) {
@@ -274,6 +293,11 @@ export default function App() {
                     <div className="step-card" aria-live="polite">
                       <h3 data-testid="step-title">{parts.guide[step].t}</h3>
                       <BulletList items={parts.guide[step].bullets} />
+                      {parts.guide[step].note ? (
+                        <p className="step-note" data-testid="step-note">
+                          {parts.guide[step].note}
+                        </p>
+                      ) : null}
                     </div>
                     {sym === "ctrl-logout" && /engine address|username/i.test(parts.guide[step].t) ? (
                       <CtrlCard loc={loc} copied={copied} onCopy={onCopy} />
@@ -283,11 +307,34 @@ export default function App() {
                         type="button"
                         className="btn btn-go"
                         data-testid="fixed-btn"
-                        onClick={() => setMode("fixed")}
+                        onClick={fixedIt}
                       >
                         That fixed it
                       </button>
                       <button type="button" className="btn btn-next" data-testid="next-btn" onClick={stillBroken}>
+                        Still broken
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {mode === "pack" ? (
+                  <div className="walk" data-testid="pack-step">
+                    <h3 className="section-label">Next step</h3>
+                    <div className="step-card" aria-live="polite">
+                      <h3 data-testid="step-title">{HEADSET_PACK_STEP.t}</h3>
+                      <BulletList items={HEADSET_PACK_STEP.bullets} />
+                    </div>
+                    <div className="actions">
+                      <button
+                        type="button"
+                        className="btn btn-next"
+                        data-testid="next-btn"
+                        onClick={() => {
+                          markTried(HEADSET_PACK_STEP.t);
+                          setMode("stop");
+                        }}
+                      >
                         Still broken
                       </button>
                     </div>
@@ -312,6 +359,9 @@ export default function App() {
                       >
                         {copied === "sos" ? "Copied" : "Copy message"}
                       </button>
+                      <p className="tag-line" data-testid="tag-line">
+                        This tags {discordTagNames(loc)}.
+                      </p>
                       <p className="choice-next">Paste it in #tech-sos on Discord and send.</p>
                       <p>{fallbackFor(loc, entry)}</p>
                       <pre data-testid="sos" className="sos-box">
