@@ -7,20 +7,10 @@ import {
   DATA,
   GOOD_TO_KNOW,
   LOCS,
-  MOD_BOX_TITLE,
   NO_GUIDE,
-  NO_MOD_LEAD,
   QUICK_CONNECT,
   SOURCES,
-  STILL_BROKEN,
-  STOP_BODY,
-  STOP_TITLE,
   SYMPTOMS,
-  WHO_GUIDES,
-  WHO_GUIDES_NYC,
-  WHO_NEVER,
-  WHO_STOP,
-  WHO_WHEN_DONE,
   YORKVILLE_RACK,
   fallbackFor,
   isLoc,
@@ -35,7 +25,7 @@ import { matchSymptoms } from "./lib/search";
 
 const SHIP_KEY = "othership-av-ship";
 
-type Mode = "walk" | "all" | "stop" | "fixed";
+type Mode = "walk" | "stop" | "fixed";
 
 function readShip(): Loc | null {
   try {
@@ -90,6 +80,7 @@ export default function App() {
   const [sym, setSym] = useState<Sym | "">("");
   const [mode, setMode] = useState<Mode>("walk");
   const [step, setStep] = useState(0);
+  const [tried, setTried] = useState<string[]>([]);
   const [copied, setCopied] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -99,7 +90,7 @@ export default function App() {
   const parts = splitSteps(entry);
   const symInfo = SYMPTOMS.find((s) => s.id === sym);
   const matches = matchSymptoms(query);
-  const message = info ? sosTemplate(info.long, symInfo?.label ?? "") : "";
+  const message = info && symInfo ? sosTemplate(info.long, symInfo.label, tried) : "";
   const isNyc = loc === "kent" || loc === "flatiron";
 
   useEffect(() => {
@@ -111,28 +102,40 @@ export default function App() {
     saveShip(next);
     setCopied("");
     setStep(0);
+    setTried([]);
     if (sym) {
       const guide = splitSteps(DATA[next][sym]).guide;
       setMode(guide.length ? "walk" : "stop");
     }
   }
 
-  function openProblem(id: Sym, how: "walk" | "all") {
+  function openProblem(id: Sym) {
     if (!loc) return;
     setSym(id);
     setStep(0);
+    setTried([]);
     setCopied("");
     const guide = splitSteps(DATA[loc][id]).guide;
-    setMode(how === "walk" && guide.length === 0 ? "stop" : how);
+    setMode(guide.length === 0 ? "stop" : "walk");
   }
 
   function clearProblem() {
     setSym("");
     setQuery("");
     setStep(0);
+    setTried([]);
     setMode("walk");
     setCopied("");
     requestAnimationFrame(() => searchRef.current?.focus());
+  }
+
+  function stillBroken() {
+    const current = parts.guide[step];
+    if (current) {
+      setTried((prev) => (prev.includes(current.t) ? prev : [...prev, current.t]));
+    }
+    if (step + 1 >= parts.guide.length) setMode("stop");
+    else setStep(step + 1);
   }
 
   async function onCopy(id: string, text: string) {
@@ -141,7 +144,7 @@ export default function App() {
   }
 
   return (
-    <div className={sym ? "in-problem" : undefined}>
+    <div className={sym ? "page in-problem" : "page"}>
       <a className="skip" href="#happening">
         Skip to what’s happening
       </a>
@@ -158,8 +161,7 @@ export default function App() {
         </div>
       </header>
       <p className="lede">
-        For sauna guides. No login. Say what’s happening, then follow each guide step. When those run out, stop and get
-        the MOD on duty.
+        For sauna guides. No login. Pick your ship, say what’s happening, then follow the steps in order.
       </p>
 
       <main>
@@ -208,7 +210,7 @@ export default function App() {
                 autoCapitalize="off"
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && matches[0]) openProblem(matches[0].id, "walk");
+                  if (e.key === "Enter" && matches[0]) openProblem(matches[0].id);
                 }}
               />
               {query.trim() ? (
@@ -220,7 +222,7 @@ export default function App() {
                         type="button"
                         role="listitem"
                         className={sym === m.id ? "match on" : "match"}
-                        onClick={() => openProblem(m.id, "walk")}
+                        onClick={() => openProblem(m.id)}
                       >
                         {m.label}
                       </button>
@@ -246,7 +248,7 @@ export default function App() {
 
                 {loc === "yorkville" ? <Callout tone="stop">{YORKVILLE_RACK}</Callout> : null}
                 {entry?.warn ? <Callout tone="mod">{entry.warn}</Callout> : null}
-                {entry?.note && mode !== "all" ? <Callout tone="info">{entry.note}</Callout> : null}
+                {entry?.note ? <Callout tone="info">{entry.note}</Callout> : null}
 
                 {mode === "fixed" ? (
                   <div className="fixed" data-testid="fixed">
@@ -265,14 +267,15 @@ export default function App() {
 
                 {mode === "walk" && parts.guide.length > 0 ? (
                   <div className="walk">
+                    <h3 className="section-label">Try these, in order</h3>
                     <p className="progress" data-testid="progress">
-                      Guide step {step + 1} of {parts.guide.length}
+                      Step {step + 1} of {parts.guide.length}
                     </p>
                     <div className="step-card" aria-live="polite">
                       <h3 data-testid="step-title">{parts.guide[step].t}</h3>
-                      {parts.guide[step].d ? <p className="detail">{parts.guide[step].d}</p> : null}
+                      <BulletList items={parts.guide[step].bullets} />
                     </div>
-                    {sym === "ctrl-logout" && (step === 1 || step === 2) ? (
+                    {sym === "ctrl-logout" && /engine address|username/i.test(parts.guide[step].t) ? (
                       <CtrlCard loc={loc} copied={copied} onCopy={onCopy} />
                     ) : null}
                     <div className="actions">
@@ -284,81 +287,60 @@ export default function App() {
                       >
                         That fixed it
                       </button>
-                      <button
-                        type="button"
-                        className="btn btn-next"
-                        data-testid="next-btn"
-                        onClick={() => {
-                          if (step + 1 >= parts.guide.length) setMode("stop");
-                          else setStep(step + 1);
-                        }}
-                      >
-                        Still broken, next step
+                      <button type="button" className="btn btn-next" data-testid="next-btn" onClick={stillBroken}>
+                        Still broken
                       </button>
                     </div>
-                    <button type="button" className="text-btn" onClick={() => setMode("all")}>
-                      See every step
-                    </button>
-                  </div>
-                ) : null}
-
-                {mode === "all" ? (
-                  <div className="all">
-                    {parts.guide.length ? (
-                      <button type="button" className="btn btn-next" onClick={() => { setStep(0); setMode("walk"); }}>
-                        Walk me through it
-                      </button>
-                    ) : null}
-                    <div className="box guide">
-                      <h3>Guide steps</h3>
-                      {parts.guide.length ? <StepList steps={parts.guide} /> : <p>{NO_GUIDE}</p>}
-                    </div>
-                    <div className="box stop" data-testid="stop">
-                      <h3>{STOP_TITLE}</h3>
-                      <p>{STOP_BODY}</p>
-                    </div>
-                    {parts.mod.length ? (
-                      <div className="box mod">
-                        <h3>{MOD_BOX_TITLE}</h3>
-                        <StepList steps={parts.mod} badge />
-                      </div>
-                    ) : null}
-                    <Callout tone="info" lead={NO_MOD_LEAD}>
-                      {fallbackFor(loc, entry)} Copy the message below.
-                    </Callout>
-                    {entry?.video ? (
-                      <p className="video">
-                        Video:{" "}
-                        <a href={entry.video.href} target="_blank" rel="noreferrer">
-                          {entry.video.label}
-                        </a>
-                      </p>
-                    ) : null}
-                    {entry?.note ? <Callout tone="info">{entry.note}</Callout> : null}
                   </div>
                 ) : null}
 
                 {mode === "stop" ? (
                   <div data-testid="stop">
-                    {parts.guide.length === 0 ? (
-                      <div className="box guide">
-                        <h3>Guide steps</h3>
-                        <p>{NO_GUIDE}</p>
-                      </div>
-                    ) : null}
-                    <div className="box stop">
-                      <h3>{STOP_TITLE}</h3>
-                      <p>{STOP_BODY}</p>
+                    <h3 className="section-label">Still not fixed? Next step</h3>
+                    {parts.guide.length === 0 ? <p>{NO_GUIDE}</p> : null}
+                    <div className="choice choice-fast">
+                      <p className="choice-kicker">Fastest</p>
+                      <p className="choice-title">MOD on site? Go get them now</p>
                     </div>
-                    {parts.mod.length ? (
-                      <div className="box mod">
-                        <h3>{MOD_BOX_TITLE}</h3>
-                        <StepList steps={parts.mod} badge />
-                      </div>
+                    <div className="choice choice-sos">
+                      <p className="choice-title">No MOD on site, or can't find them?</p>
+                      <button
+                        type="button"
+                        className="btn btn-next"
+                        data-testid="copy-sos"
+                        onClick={() => onCopy("sos", message)}
+                      >
+                        {copied === "sos" ? "Copied" : "Copy message"}
+                      </button>
+                      <p className="choice-next">Paste it in #tech-sos on Discord and send.</p>
+                      <p>{fallbackFor(loc, entry)}</p>
+                      <pre data-testid="sos" className="sos-box">
+                        {message}
+                      </pre>
+                      {copied === "sos:no" ? (
+                        <p className="hint">Copy didn’t work here. Tap the message box to select it, then copy.</p>
+                      ) : null}
+                    </div>
+                    {parts.guide.length ? (
+                      <button
+                        type="button"
+                        className="text-btn"
+                        onClick={() => {
+                          setStep(parts.guide.length - 1);
+                          setMode("walk");
+                        }}
+                      >
+                        Back to the steps
+                      </button>
                     ) : null}
-                    <Callout tone="info" lead={NO_MOD_LEAD}>
-                      {fallbackFor(loc, entry)} Copy the message below.
-                    </Callout>
+                  </div>
+                ) : null}
+
+                {parts.mod.length ? (
+                  <details className="fold mod-fold" data-testid="mod-fold">
+                    <summary>For the MOD</summary>
+                    <p className="fold-note">These are for the MOD on duty. Guides stop at the steps above.</p>
+                    <StepList steps={parts.mod} />
                     {entry?.video ? (
                       <p className="video">
                         Video:{" "}
@@ -367,46 +349,10 @@ export default function App() {
                         </a>
                       </p>
                     ) : null}
-                    <StillBroken message={message} copied={copied} onCopy={onCopy} />
-                    <button type="button" className="text-btn" onClick={() => { setStep(0); setMode(parts.guide.length ? "walk" : "all"); }}>
-                      {parts.guide.length ? "Back to guide steps" : "See the full page"}
-                    </button>
-                  </div>
+                  </details>
                 ) : null}
               </article>
             ) : null}
-
-            <section className="block" id="who">
-              <h2>Who does what</h2>
-              <div className="box guide">
-                <h3>Guides can</h3>
-                <ul>
-                  {WHO_GUIDES.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                  {isNyc ? <li>{WHO_GUIDES_NYC}</li> : null}
-                </ul>
-              </div>
-              <div className="box mod">
-                <h3>Stop: get the MOD on duty</h3>
-                <ul>
-                  {WHO_STOP.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="box stop">
-                <h3>Never</h3>
-                <ul>
-                  {WHO_NEVER.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-              <Callout tone="info" lead="When the guide steps run out">
-                {WHO_WHEN_DONE}
-              </Callout>
-            </section>
 
             <section className="block" id="browse">
               <h2>Browse all problems</h2>
@@ -416,7 +362,7 @@ export default function App() {
                     key={item.id}
                     type="button"
                     className={sym === item.id ? "match on" : "match"}
-                    onClick={() => openProblem(item.id, "all")}
+                    onClick={() => openProblem(item.id)}
                   >
                     {item.label}
                   </button>
@@ -452,8 +398,11 @@ export default function App() {
               <ul className="tips">
                 {GOOD_TO_KNOW[loc].map((tip) => (
                   <li key={tip.t}>
-                    {tip.t}
-                    {tip.mod ? <Badge /> : null}
+                    <p className="t">
+                      {tip.t}
+                      {tip.mod ? <Badge /> : null}
+                    </p>
+                    <BulletList items={tip.bullets} />
                   </li>
                 ))}
               </ul>
@@ -467,11 +416,6 @@ export default function App() {
               </details>
             ) : null}
 
-            {mode !== "stop" ? (
-              <section className="block" id="sos">
-                <StillBroken message={message} copied={copied} onCopy={onCopy} />
-              </section>
-            ) : null}
           </>
         ) : null}
 
@@ -509,18 +453,25 @@ function Badge() {
   return <span className="badge">MOD only</span>;
 }
 
-function StepList({ steps, badge = false }: { steps: Step[]; badge?: boolean }) {
+function BulletList({ items }: { items: string[] }) {
+  return (
+    <ul className="points">
+      {items.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function StepList({ steps }: { steps: Step[] }) {
   return (
     <ol className="steps">
       {steps.map((s, i) => (
         <li key={`${s.t}-${i}`}>
           <span className="n">{i + 1}</span>
           <div>
-            <p className="t">
-              {s.t}
-              {badge ? <Badge /> : null}
-            </p>
-            {s.d ? <p className="d">{s.d}</p> : null}
+            <p className="t">{s.t}</p>
+            <BulletList items={s.bullets} />
           </div>
         </li>
       ))}
@@ -577,36 +528,3 @@ function CtrlCard({
   );
 }
 
-function StillBroken({
-  message,
-  copied,
-  onCopy,
-}: {
-  message: string;
-  copied: string;
-  onCopy: (id: string, text: string) => void;
-}) {
-  return (
-    <div className="sos">
-      <h2>Still broken?</h2>
-      <ol className="steps">
-        {STILL_BROKEN.map((item, i) => (
-          <li key={item.title}>
-            <span className="n">{i + 1}</span>
-            <div>
-              <p className="t">{item.title}</p>
-              <p className="d">{item.detail}</p>
-            </div>
-          </li>
-        ))}
-      </ol>
-      <pre data-testid="sos" className="sos-box">
-        {message}
-      </pre>
-      <button type="button" className="btn btn-next" data-testid="copy-sos" onClick={() => onCopy("sos", message)}>
-        {copied === "sos" ? "Copied" : "Copy message"}
-      </button>
-      {copied === "sos:no" ? <p className="hint">Copy didn’t work here. Tap the message box to select it, then copy.</p> : null}
-    </div>
-  );
-}

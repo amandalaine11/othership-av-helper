@@ -5,6 +5,7 @@ import {
   CTRL_ALT_NOTE,
   CTRL_LOGIN,
   DATA,
+  DISCORD_ROLE_MENTION,
   GOOD_TO_KNOW,
   QUICK_CONNECT,
   SOURCES,
@@ -91,12 +92,44 @@ describe("approved content", () => {
     expect(SOURCES.length).toBeGreaterThan(3);
   });
 
-  it("builds the #tech-sos message with the MOD line", () => {
-    const msg = sosTemplate("Kent / Williamsburg (NYC)", "Mic has no sound");
-    expect(msg).toContain("TECH SOS – Kent / Williamsburg (NYC)");
-    expect(msg).toContain("MOD on site? yes / no");
+  it("builds the #tech-sos message from the role mention, ship, and steps still broken", () => {
+    expect(DISCORD_ROLE_MENTION).toBe("@MOD");
+    const msg = sosTemplate("Kent / Williamsburg (NYC)", "Mic has no sound", ["Turn the mute switch off"]);
+    expect(msg.startsWith(`${DISCORD_ROLE_MENTION}\n`)).toBe(true);
+    expect(msg).toContain("Ship: Kent / Williamsburg (NYC)");
     expect(msg).toContain("Problem: Mic has no sound");
-    expect(msg).toContain("Photo / video: attached");
+    expect(msg).toContain("Steps tried (still broken):");
+    expect(msg).toContain("- Turn the mute switch off");
+    expect(msg).toContain("MOD on site: no");
+  });
+
+  it("gives every step and tip a short title plus 2 to 4 bullets", () => {
+    for (const loc of Object.values(DATA)) {
+      for (const entry of Object.values(loc)) {
+        for (const step of entry?.steps ?? []) {
+          expect(step.t.trim().length).toBeGreaterThan(0);
+          expect(step.bullets.length).toBeGreaterThanOrEqual(2);
+          expect(step.bullets.length).toBeLessThanOrEqual(4);
+        }
+      }
+    }
+    for (const tips of Object.values(GOOD_TO_KNOW)) {
+      for (const tip of tips) {
+        expect(tip.bullets.length).toBeGreaterThanOrEqual(2);
+        expect(tip.bullets.length).toBeLessThanOrEqual(4);
+      }
+    }
+  });
+
+  it("does not publish rack PINs, AnyDesk IDs, phone numbers, or other logins", () => {
+    const src = ["App.tsx", "index.css", "main.tsx", "lib/content.ts", "lib/search.ts"]
+      .map((f) => readFileSync(join(process.cwd(), "src", f), "utf8"))
+      .join("\n");
+    expect(src).not.toMatch(/PIN[^.\n]{0,40}\d{4,}/i);
+    expect(src).not.toMatch(/\b\d{9,12}\b/);
+    expect(src).not.toMatch(/@gmail\.com|@othership\.us/i);
+    expect(src).not.toMatch(/\b\d{3}[- ]\d{3}[- ]\d{4}\b/);
+    expect(src).not.toMatch(/anydesk[^.\n]{0,40}\d{6,}/i);
   });
 });
 
